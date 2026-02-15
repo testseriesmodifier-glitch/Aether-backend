@@ -1,7 +1,7 @@
 {
-  "name": "Aether-backend",
+  "name": "aether-backend",
   "version": "1.0.0",
-  "type": "module",  <-- এই লাইনটি যোগ করুন
+  "type": "module",
   "dependencies": {
     "@google/generative-ai": "^0.1.3"
   }
