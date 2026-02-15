@@ -1,6 +1,7 @@
 {
-  "name": "prof-nova-backend",
+  "name": "Aether-backend",
   "version": "1.0.0",
+  "type": "module",  <-- এই লাইনটি যোগ করুন
   "dependencies": {
     "@google/generative-ai": "^0.1.3"
   }
