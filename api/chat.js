@@ -1,26 +1,20 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
 export default async function handler(req, res) {
-  // ১. CORS সেটআপ (সঠিক কনফিগারেশন)
-  res.setHeader('Access-Control-Allow-Credentials', true);
-  
-  // 🛑 ভুল ছিল: আপনার ব্যাকএন্ড লিংক
-  // ✅ সঠিক: '*' (মানে যেকোনো জায়গা থেকে এক্সেস করা যাবে)
+  // --- 1. CORS HEADERS (FINAL FIX) ---
+  // '*' মানে সবাই এক্সেস পাবে। Credentials বাদ দেওয়া হয়েছে যাতে কনফ্লিক্ট না হয়।
   res.setHeader('Access-Control-Allow-Origin', '*'); 
-  
-  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
-  res.setHeader(
-    'Access-Control-Allow-Headers',
-    'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version'
-  );
+  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS, POST');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
-  // Pre-flight check handling (ব্রাউজার আগে চেক করে মেথড ঠিক আছে কিনা)
+  // --- 2. PREFLIGHT REQUEST (OPTIONS) ---
+  // ব্রাউজার যখন চেক করে, তখন তাকে 200 OK পাঠানো হচ্ছে
   if (req.method === 'OPTIONS') {
     res.status(200).end();
     return;
   }
 
-  // শুধুমাত্র POST মেথড এক্সেপ্ট করা হবে
+  // --- 3. METHOD CHECK ---
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method Not Allowed' });
   }
@@ -42,11 +36,10 @@ export default async function handler(req, res) {
         Your goal is to conduct a Physics Viva.
         
         Rules:
-        1. Ask one question at a time.
-        2. Use LaTeX for math equations (enclosed in $ for inline, $$ for block).
-        3. Do NOT use \\text{} command in LaTeX.
-        4. If the answer is wrong, explain the concept simply before moving on.
-        5. Start by welcoming the student and asking for their preferred topic.
+        1. Keep answers concise (max 2-3 sentences unless asked for detail).
+        2. Ask one follow-up question at a time.
+        3. Use LaTeX for math equations (enclosed in $ for inline, $$ for block).
+        4. If the answer is wrong, explain simply and ask to try again.
         `
     });
 
@@ -61,7 +54,7 @@ export default async function handler(req, res) {
     return res.status(200).json({ reply: text });
 
   } catch (error) {
-    console.error("Error:", error);
-    return res.status(500).json({ error: 'Internal Server Error' });
+    console.error("Server Error:", error);
+    return res.status(500).json({ error: 'Internal Server Error', details: error.message });
   }
 }
