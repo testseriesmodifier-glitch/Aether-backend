@@ -1,10 +1,11 @@
 export default async function handler(req, res) {
-    // ১. পারমিশন (CORS)
+    // ১. ব্রাউজার পারমিশন (CORS) - যাতে আপনার সাইট থেকে রিকোয়েস্ট আসে
     res.setHeader('Access-Control-Allow-Credentials', true);
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
     res.setHeader('Access-Control-Allow-Headers', 'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version');
 
+    // প্রি-ফ্লাইট রিকোয়েস্ট হ্যান্ডেল করা
     if (req.method === 'OPTIONS') {
         res.status(200).end();
         return;
@@ -16,18 +17,21 @@ export default async function handler(req, res) {
 
         const { message, history } = req.body;
 
-        // ২. প্রফেসরের ক্যারেক্টার
+        // ২. প্রফেসরের ক্যারেক্টার (System Prompt)
         const systemPrompt = `
-        You are Professor Aether, a strict Physics Examiner.
-        Rules:
-        1. Ask one conceptual physics question.
-        2. Keep it short.
-        3. If answer is wrong, correct it.
-        4. If correct, ask next question.
+        You are Professor Aether, a strict Physics Examiner conducting a Viva Voce.
+        
+        INSTRUCTIONS:
+        1. Ask ONE conceptual physics question at a time.
+        2. Keep it short and direct.
+        3. Evaluate the student's answer strictly.
+        4. If wrong, correct them briefly.
+        5. If correct, ask a harder follow-up.
         `;
 
         const messages = [{ role: "system", content: systemPrompt }];
         
+        // হিস্ট্রি যোগ করা
         if (history && Array.isArray(history)) {
             history.forEach(msg => {
                 const role = (msg.role === 'model' || msg.role === 'assistant') ? 'assistant' : 'user';
@@ -38,7 +42,7 @@ export default async function handler(req, res) {
         
         messages.push({ role: "user", content: message });
 
-        // ৩. Groq API (Updated Model)
+        // ৩. Groq API (🔥 NEW STABLE MODEL)
         const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
             method: "POST",
             headers: {
@@ -47,17 +51,19 @@ export default async function handler(req, res) {
             },
             body: JSON.stringify({
                 messages: messages,
-                model: "llama3-8b-8192", // 🔥 FIX: ছোট এবং ফাস্ট মডেল ব্যবহার করা হলো
+                // 🔥 আগের মডেলটি বন্ধ হয়ে গেছে, তাই এটি ব্যবহার করছি
+                model: "llama-3.3-70b-versatile", 
                 temperature: 0.6,
-                max_tokens: 250
+                max_tokens: 300
             })
         });
 
         const data = await response.json();
 
-        // 🔥 FIX: আসল এরর চেক করা
+        // ৪. এরর চেকিং (যাতে সার্ভার ক্র্যাশ না করে)
         if (data.error) {
-            return res.status(500).json({ error: `Groq Error: ${data.error.message}` });
+            console.error("Groq API Error:", data.error);
+            return res.status(500).json({ error: `AI Model Error: ${data.error.message}` });
         }
 
         const reply = data.choices?.[0]?.message?.content;
@@ -69,7 +75,7 @@ export default async function handler(req, res) {
         return res.status(200).json({ reply: reply });
 
     } catch (error) {
-        console.error("Viva Error:", error);
+        console.error("Server Error:", error);
         return res.status(500).json({ error: error.message });
     }
 }
