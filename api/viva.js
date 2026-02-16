@@ -1,5 +1,5 @@
 export default async function handler(req, res) {
-    // ১. পারমিশন (CORS) - যাতে আপনার ওয়েবসাইট থেকে রিকোয়েস্ট আসে
+    // ১. পারমিশন (CORS)
     res.setHeader('Access-Control-Allow-Credentials', true);
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
@@ -11,42 +11,34 @@ export default async function handler(req, res) {
     }
 
     try {
-        const apiKey = process.env.GROQ_API_KEY; // Vercel থেকে কি (Key) নেবে
-        if (!apiKey) return res.status(500).json({ error: 'Professor Brain Missing (API Key)' });
+        const apiKey = process.env.GROQ_API_KEY;
+        if (!apiKey) return res.status(500).json({ error: 'System Error: API Key Missing in Vercel.' });
 
         const { message, history } = req.body;
 
-        // ২. প্রফেসরের ক্যারেক্টার (খুবই গুরুত্বপূর্ণ)
+        // ২. প্রফেসরের ক্যারেক্টার
         const systemPrompt = `
-        You are Professor Aether, a strict external examiner conducting a Physics Viva Voce.
-        
-        PROTOCOL:
-        1.  **Tone:** Formal, strict, but fair. Like a university professor.
-        2.  **Action:** Ask ONE conceptual question at a time.
-        3.  **Evaluation:** - If the student answers correctly: Say "Correct." and immediately ask a harder follow-up question.
-            - If vague: Say "Be precise." and ask to clarify.
-            - If wrong: Correct them in one sentence and move to a new topic.
-        4.  **Brevity:** Keep responses SHORT. Do not lecture. This is an oral exam.
-        5.  **Termination:** If the student says "End Viva", give a score out of 10 and a final remark.
-        
-        START: ask the student for their name and preferred topic.
+        You are Professor Aether, a strict Physics Examiner.
+        Rules:
+        1. Ask one conceptual physics question.
+        2. Keep it short.
+        3. If answer is wrong, correct it.
+        4. If correct, ask next question.
         `;
 
-        // ৩. মেমোরি সাজানো
         const messages = [{ role: "system", content: systemPrompt }];
         
-        if (history) {
+        if (history && Array.isArray(history)) {
             history.forEach(msg => {
-                messages.push({ 
-                    role: msg.role === 'professor' ? 'assistant' : 'user', 
-                    content: msg.content 
-                });
+                const role = (msg.role === 'model' || msg.role === 'assistant') ? 'assistant' : 'user';
+                const content = msg.content || (msg.parts && msg.parts[0] ? msg.parts[0].text : "");
+                if (content) messages.push({ role, content });
             });
         }
         
         messages.push({ role: "user", content: message });
 
-        // ৪. Groq (Llama 3) কল করা
+        // ৩. Groq API (Updated Model)
         const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
             method: "POST",
             headers: {
@@ -55,18 +47,29 @@ export default async function handler(req, res) {
             },
             body: JSON.stringify({
                 messages: messages,
-                model: "llama3-70b-8192", // 70B মডেল ভাইভার জন্য সেরা
+                model: "llama3-8b-8192", // 🔥 FIX: ছোট এবং ফাস্ট মডেল ব্যবহার করা হলো
                 temperature: 0.6,
                 max_tokens: 250
             })
         });
 
         const data = await response.json();
-        const reply = data.choices?.[0]?.message?.content || "Professor is silent...";
+
+        // 🔥 FIX: আসল এরর চেক করা
+        if (data.error) {
+            return res.status(500).json({ error: `Groq Error: ${data.error.message}` });
+        }
+
+        const reply = data.choices?.[0]?.message?.content;
+
+        if (!reply) {
+            return res.status(500).json({ error: "AI gave empty response." });
+        }
 
         return res.status(200).json({ reply: reply });
 
     } catch (error) {
+        console.error("Viva Error:", error);
         return res.status(500).json({ error: error.message });
     }
 }
