@@ -1,6 +1,6 @@
 {
   "name": "aether-ai-backend",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Physics Assistant Backend with Gemini and Image Generation",
   "main": "api/chat.js",
   "scripts": {
@@ -12,9 +12,9 @@
     "pdf-parse": "^1.1.1"
   },
   "engines": {
-    "node": "18.x"
+    "node": "24.x"
   },
   "keywords": [],
-  "author": "",
+  "author": "Aether AI",
   "license": "ISC"
 }
