@@ -1,59 +1,73 @@
+import { GoogleGenerativeAI } from "@google/generative-ai";
+import pdf from 'pdf-parse';
+
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+
+export const config = {
+    api: { bodyParser: { sizeLimit: '10mb' } },
+};
+
 export default async function handler(req, res) {
+    // CORS Headers
     res.setHeader('Access-Control-Allow-Credentials', true);
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
     res.setHeader('Access-Control-Allow-Headers', 'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version');
 
-    if (req.method === 'OPTIONS') {
-        res.status(200).end();
-        return;
-    }
+    if (req.method === 'OPTIONS') return res.status(200).end();
 
     try {
-        const apiKey = process.env.GROQ_API_KEY;
-        if (!apiKey) return res.status(500).json({ error: 'API Key missing' });
+        const { message, history, file } = req.body;
+        let pdfText = "";
 
-        const { message, history } = req.body;
-
-        const messages = [
-            { role: "system", content: "You are Aether, a helpful Physics AI Tutor. Keep answers precise. Use LaTeX for math." }
-        ];
-
-        if (history && Array.isArray(history)) {
-            history.forEach(msg => {
-                const role = (msg.role === 'model' || msg.role === 'assistant') ? 'assistant' : 'user';
-                const content = msg.content || (msg.parts && msg.parts[0] ? msg.parts[0].text : "");
-                if (content) messages.push({ role, content });
-            });
+        // ১. PDF থেকে টেক্সট এক্সট্রাক্ট
+        if (file && file.type === 'application/pdf') {
+            try {
+                const base64Data = file.data.split(',')[1];
+                const dataBuffer = Buffer.from(base64Data, 'base64');
+                const data = await pdf(dataBuffer);
+                pdfText = `\n[Attached PDF Content]: ${data.text.substring(0, 7000)}`;
+            } catch (err) { console.error("PDF Error:", err); }
         }
 
-        messages.push({ role: "user", content: message });
+        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
-        const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-            method: "POST",
-            headers: {
-                "Authorization": `Bearer ${apiKey.trim()}`,
-                "Content-Type": "application/json"
-            },
-            body: JSON.stringify({
-                messages: messages,
-                // 🔥 চ্যাটের জন্য ফাস্ট মডেল
-                model: "llama-3.1-8b-instant", 
-                temperature: 0.7,
-                max_tokens: 800
-            })
+        // ২. অ্যাডভান্সড সিস্টেম প্রম্পট (ইমেজ জেনারেশন ইনস্ট্রাকশন সহ)
+        const isViva = history && JSON.stringify(history).includes("Professor");
+        const systemPrompt = isViva 
+            ? "You are Prof. Aether, a strict physics examiner."
+            : `You are Aether, a helpful physics assistant. 
+               If the user asks to see or visualize something (e.g., 'show me a black hole' or 'diagram of an atom'), 
+               include an image in your response using this markdown format: 
+               ![Image](https://image.pollinations.ai/prompt/{description}?width=800&height=600&nologo=true)
+               Replace {description} with a detailed English prompt for the image.`;
+
+        // ৩. মেসেজ এবং ফাইল প্রিপারেশন
+        let promptParts = [`${systemPrompt} ${pdfText} \n\nUser: ${message}`];
+        if (file && file.type.startsWith('image/')) {
+            promptParts.push({ inlineData: { data: file.data.split(',')[1], mimeType: file.type } });
+        }
+
+        // ৪. চ্যাট জেনারেশন
+        const chat = model.startChat({
+            history: (history || []).map(h => ({
+                role: h.role === 'user' ? 'user' : 'model',
+                parts: [{ text: h.content }],
+            })),
         });
 
-        const data = await response.json();
+        const result = await chat.sendMessage(promptParts);
+        const response = await result.response;
+        let replyText = response.text();
 
-        if (data.error) {
-            return res.status(500).json({ error: data.error.message });
+        // ৫. সাজেশন চিপস যোগ করা
+        if (!isViva) {
+            replyText += "\n\n[SUGGESTIONS]: Explain with more details, Show a diagram, Simplify this";
         }
 
-        const reply = data.choices?.[0]?.message?.content || "I am speechless!";
-        return res.status(200).json({ reply: reply });
+        res.status(200).json({ reply: replyText });
 
     } catch (error) {
-        return res.status(500).json({ error: error.message });
+        res.status(500).json({ error: error.message });
     }
 }
